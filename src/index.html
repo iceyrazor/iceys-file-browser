@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title></title>
+	<style>
+	::-webkit-scrollbar {
+		width: 0px;  /* Remove scrollbar space */
+		background: transparent;  /* Optional: just make scrollbar invisible */
+	}
+	html{
+		background-color: rgba(30,30,30,0.3);
+		color: white;
+		height: 100vh;
+		width: 100vw;
+	}
+	.main-wrap{
+		user-select: none;
+		position: absolute;
+		top: 5%;
+		right: 10px;
+		width: 90%;
+		min-height: 20px;
+		max-height: 70%;
+		overflow-y: scroll;
+	}
+	
+	#folder_box{
+		position: relative;
+		height: 100%;
+	}
+	#folder_box > div{
+		padding: 2px;
+	}
+	#folder_box > div:first-child{
+		height: 20px;
+	}
+
+	.sub-folder{
+		padding-left: 20px;
+	}
+	.center_text{
+		display: flex;
+		grid-template-columns: 1fr 1fr;
+		justify-content: left;
+		align-items: center;
+	}
+	.center_text > img{
+		padding-right: 5px;
+		width: 30px;
+		height: 30px;
+	}
+	
+	.folder-item{
+		padding-top: 10px;
+	}
+
+	#context_menu{
+		display: none;
+		user-select: none;
+		position: absolute;
+		background-color: rgba(40,40,40,1);
+		padding: 4px;
+		left: 0px;
+		top: 0px;
+	}
+	#context_menu > div:hover{
+		background-color: rgba(80,80,80);
+	}
+
+	#nav_bar{
+		user-select: none;
+		position: absolute;
+		top: 3%;
+		left: 5%;
+		width: 91%;
+		display: flex;
+		direction: rtl;
+		grid-template-columns: 1fr 1fr;
+		background-color: rgba(30,30,30,1);
+
+		display: none;
+	}
+	#nav_bar > div{
+		padding: 4px;
+		height: 100%;
+	}
+	#nav_bar > div:hover{
+		background-color: rgba(80,80,80,1);
+	}
+
+	</style>
+</head>
+<body>
+
+	<div class="main-wrap"><div id="folder_box"></div></div>
+
+	<div id="context_menu">
+		<div onClick="reload()">reload everything</div>
+		<div onClick="add_to_list()">add folder to list</div>
+	</div>
+
+	<div id="nav_bar">
+		<div onclick="settings()">settings</div>
+	</div>
+
+	<script>
+		//lerd teh loobrewies
+		const fs=require('fs'),
+			os=require('os'),
+			path=require('path'),
+			electron=require('electron'),
+			{shell,ipcRenderer}=require('electron');
+
+		//create config if not exist
+		if(fs.existsSync(path.resolve(__dirname,"../config.json"))!=true){
+			let obj={
+				default_folders:[
+					"%Downloads%",
+					"%Pictures%",
+					"%Videos%",
+					"%Documents%",
+					"%Desktop%"
+				]
+			}
+			fs.writeFile(
+				path.resolve(__dirname,"../config.json"),
+				JSON.stringify(obj,null,4),
+				()=>{
+					let obj=null
+				}
+			)
+			
+		}
+
+		//_*folder function related*_
+		//load folder config
+
+		function load_default_folders(){
+
+			fs.readFile(path.resolve(__dirname + '/../config.json'), function (err, data) {
+				data=JSON.parse(data)["default_folders"];
+
+				let text="<div></div>"
+
+				data.forEach((folder,i)=>{
+					name=folder.replace(/%/g,"");
+
+					folder=folder.replace(
+						/%Desktop%/g,path.resolve(os.userInfo().homedir,"Desktop")
+					).replace(
+						/%Pictures%/g,path.resolve(os.userInfo().homedir,"Pictures")
+					).replace(
+						/%Documents%/g,path.resolve(os.userInfo().homedir,"Documents")
+					).replace(
+						/%Videos%/g,path.resolve(os.userInfo().homedir,"Videos")
+					).replace(
+						/%Downloads%/g,path.resolve(os.userInfo().homedir,"Downloads")
+					);
+
+					name=folder.replace(
+						path.resolve(os.userInfo().homedir,"Desktop"),'Desktop'
+					).replace(
+						path.resolve(os.userInfo().homedir,"Pictures"),'Pictures'
+					).replace(
+						path.resolve(os.userInfo().homedir,"Documents"),'Documents'
+					).replace(
+						path.resolve(os.userInfo().homedir,"Videos"),'Videos'
+					).replace(
+						path.resolve(os.userInfo().homedir,"Downloads"),'Downloads'
+					);
+
+
+
+					let file_parsed=folder.replace(/\\/g,"\\\\");
+					
+					if (fs.existsSync(folder)) {
+					text+=
+						'<div class="folder">'+
+						'<div class="center_text" onclick="open_folder(\''+file_parsed+'\')">'+
+						'<img src="imgassets/foldericon.ico" />'+name+
+						'</div>'+
+						'<div class="sub-folder" id="'+(folder)+'"></div></div>'
+					} else {
+					text+='<div style="background-color: rgb(180,0,0);" class="not-exist" id="'+folder
+					+'">'+folder+' does not exist</div>'
+					}
+				})
+				
+				document.getElementById('folder_box').innerHTML=text
+			});
+		}
+		load_default_folders();
+
+
+		let folder_box=document.getElementById('folder_box')
+		
+		function open_folder(id){
+		let div=document.getElementById(id)
+		if(div.innerHTML==""){
+			fs.readdir(id,(err, files) => {
+				files.sort((a,b)=>{
+					if(a.includes(".")){
+						return 0
+					} else {
+						return -1
+					}
+				})
+				for(file in files){
+					let file_parsed=(id+"\\"+files[file]).replace(/\\/g,"\\\\");
+
+					if(files[file].includes('.')){
+						div.innerHTML+=
+						'<div class="folder-item" onclick="shell.openPath(\''+(file_parsed)
+						+'\')">'+
+						files[file]+'</div>'
+					} else {
+						div.innerHTML+=
+						'<div class="folder">'+
+						'<div class="center_text" onclick="open_folder(\''+file_parsed+'\')">'+
+						'<img src="imgassets/foldericon.ico" />'+files[file]+
+						'</div>'+
+						'<div class="sub-folder" id="'+(id+"\\"+files[file])+'"></div></div>'
+					}
+				}
+			})
+		} else {
+			div.innerHTML=""
+		}
+		}
+
+		//_*context menu stuffs*_
+		let context_data=""
+		context_menu=document.getElementById('context_menu')
+		context_menu_default=context_menu.innerHTML
+
+		window.addEventListener("contextmenu", e=>{
+			if(e.target.onclick){
+				let str=e.target.onclick.toString().match(/\'.*\'/g)[0].replace(/\'/g,"")
+				if(str.includes(".")){
+
+				}
+				else if(str){
+					e.preventDefault();
+					context_menu.innerHTML=context_menu_default
+					context_data=str.replace(/\\\\/g,"\\")
+					if(e.srcElement.parentNode.parentNode.id=="folder_box"){
+						context_menu.innerHTML+='<div onclick="remove_from_list()">remove from list</div>'
+					}
+					context_menu.style.display="block";
+					context_menu.style.left=e.pageX+'px';
+					context_menu.style.top=e.pageY+'px';
+				}
+			}
+			else if(e.target.class="not-exist"){
+				console.log(e.target.id.toString());
+				str=e.target.id.toString()
+				e.preventDefault();
+				context_menu.innerHTML='<div onclick="remove_from_list()">remove from list</div>'
+				context_data=str.replace(/\\\\/g,"\\")
+
+				context_menu.style.display="block";
+				context_menu.style.left=e.pageX+'px';
+				context_menu.style.top=e.pageY+'px';
+			}
+		})
+
+		window.addEventListener('mousedown',e=>{
+			if(context_menu.style.display!="none"){
+			setTimeout(()=>{
+				
+					context_menu.style.display="none"
+				
+			},200)
+			}
+		})
+		function add_to_list(id){
+			if(id==null){
+				id=context_data
+			}
+
+			fs.readFile(path.resolve(__dirname + '/../config.json'), function (err, data) {
+				data=JSON.parse(data)
+				data["default_folders"].push(id)
+				fs.writeFile(
+					path.resolve(__dirname,"../config.json"),
+					JSON.stringify(data,null,4),
+					()=>{
+						load_default_folders();
+					}
+				)
+
+			});
+		}
+		function remove_from_list(){
+			fs.readFile(path.resolve(__dirname + '/../config.json'), function (err, data) {
+				data=JSON.parse(data)
+				data["default_folders"].forEach((folder,i)=>{
+					folder=folder.replace(
+						/%Desktop%/g,path.resolve(os.userInfo().homedir,"Desktop")
+					).replace(
+						/%Pictures%/g,path.resolve(os.userInfo().homedir,"Pictures")
+					).replace(
+						/%Documents%/g,path.resolve(os.userInfo().homedir,"Documents")
+					).replace(
+						/%Videos%/g,path.resolve(os.userInfo().homedir,"Videos")
+					).replace(
+						/%Downloads%/g,path.resolve(os.userInfo().homedir,"Downloads")
+					);
+					if(folder==context_data){
+						console.log("L + RATIO + REMOVED YOUR FILE "+context_data+" + COPE");
+						data["default_folders"].splice(i,1)
+					}
+				});
+				fs.writeFile(
+					path.resolve(__dirname,"../config.json"),
+					JSON.stringify(data,null,4),
+					()=>{
+						load_default_folders();
+					}
+				)
+			});
+		}
+
+
+
+		function reload(){
+			location.reload();
+		}
+
+		//_*allow click behind*_
+		folder_box.addEventListener('mouseenter',()=>{
+			ipcRenderer.send('set-click','false')
+		})
+		folder_box.addEventListener('mouseleave',()=>{
+			ipcRenderer.send('set-click','true')
+		});
+		context_menu.addEventListener('mouseenter',()=>{
+			ipcRenderer.send('set-click','false')
+		})
+		context_menu.addEventListener('mouseleave',()=>{
+			ipcRenderer.send('set-click','true')
+		});
+	</script>
+</body>
+</html>
